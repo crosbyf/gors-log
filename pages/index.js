@@ -78,8 +78,8 @@ export default function Home() {
       <meta name="apple-mobile-web-app-capable" content="yes" />
     </Head>
     <div className={`min-h-screen ${t.bg} ${t.text}`}>
-      {/* Header */}
-      <div className={`fixed top-0 left-0 right-0 z-20 bg-gradient-to-b ${t.headerGradient} ${t.headerBorder} border-b py-2 px-4 shadow-lg`}>
+      {/* Header — uses solid theme background instead of gradient to fix color mismatch */}
+      <div className={`fixed top-0 left-0 right-0 z-20 ${t.bg} ${t.headerBorder} border-b py-2 px-4 shadow-lg`}>
         <div className="max-w-4xl mx-auto flex items-center justify-between">
           {view === 'home' ? (
             <button onClick={() => setShowSelector(true)} className="bg-gradient-to-r from-blue-600 to-blue-500 rounded-lg p-2 shadow-lg shadow-blue-500/20 active:scale-95"><Icons.Plus /></button>
@@ -93,7 +93,7 @@ export default function Home() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto p-3 pb-24 pt-12"><div className="h-12" />
+      <div className="max-w-4xl mx-auto p-3 pb-24 pt-12"><div className="h-4" />
         {view === 'home' && <HomeView workouts={workouts} presets={presets} proteinEntries={proteinEntries} dark={dark} theme={t} onEdit={handleEdit} onDelete={handleDelete} onToast={flash} />}
         {view === 'stats' && <StatsView workouts={workouts} weightEntries={weightEntries} proteinEntries={proteinEntries} dark={dark} theme={t}
           onWeightSave={(e, idx) => { if (idx !== null) { const u = [...weightEntries]; u[idx] = e; swe(u); } else swe([...weightEntries, e]); }}
@@ -106,8 +106,8 @@ export default function Home() {
           onPresetsChange={sp} onExercisesChange={se} onWorkoutsChange={sw} onWeightChange={swe} onToast={flash} />}
       </div>
 
-      {/* Bottom nav */}
-      <div className={`fixed bottom-0 left-0 right-0 ${dark?'bg-gray-800/95 border-gray-700/50':'bg-gray-100/95 border-gray-300'} backdrop-blur-sm border-t safe-area-pb shadow-2xl pb-2 z-20`}>
+      {/* Bottom nav — added extra pb for safe area */}
+      <div className={`fixed bottom-0 left-0 right-0 ${dark?'bg-gray-800/95 border-gray-700/50':'bg-gray-100/95 border-gray-300'} backdrop-blur-sm border-t safe-area-pb shadow-2xl pb-4 z-20`}>
         <div className="max-w-4xl mx-auto flex">
           {[{id:'home',icon:<Icons.Calendar/>,label:'Home'},{id:'stats',icon:<Icons.TrendingUp/>,label:'Stats'},{id:'settings',icon:<Icons.Settings/>,label:'Settings'}].map(({id,icon,label})=>(
             <button key={id} onClick={() => { setView(id); window.scrollTo({top:0,behavior:'smooth'}); }}
