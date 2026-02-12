@@ -95,6 +95,14 @@ function DayModal({ open, onClose, dateStr, workouts, presets, proteinEntries, d
   const color = getPresetColor(presets, w.location);
   const dayProtein = proteinEntries.filter(e => e.date === dateStr).reduce((s, e) => s + e.grams, 0);
 
+  // Build metadata pieces — only show values that exist
+  const metaParts = [];
+  metaParts.push(`${w.exercises.length} exercise${w.exercises.length !== 1 ? 's' : ''}`);
+  if (w.structure === 'pairs') metaParts.push(`Pairs ${w.structureDuration || 3}'`);
+  else if (w.structure === 'circuit') metaParts.push('Circuit');
+  if (w.elapsedTime) metaParts.push(formatTimeHHMMSS(w.elapsedTime));
+  if (dayProtein > 0) metaParts.push(`${dayProtein}g protein`);
+
   const handleCopy = () => { copyToSheets(w); onToast('Workout copied to clipboard!'); onClose(); };
   const handleShare = async () => {
     const r = await shareWorkout(w);
@@ -107,25 +115,19 @@ function DayModal({ open, onClose, dateStr, workouts, presets, proteinEntries, d
       <div className={dark ? 'bg-gray-800' : 'bg-white'}>
         <DragHandle dark={dark} />
         <div className="p-4">
-          {/* Header */}
+          {/* Header — stacked layout so nothing truncates */}
           <div className={`mb-4 p-3 rounded-lg border-l-4 ${color.border} ${dark ? 'bg-gray-700/50' : 'bg-gray-100'}`}>
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-lg">{dayOfWeek}, {mo}/{dy}/{yr.slice(2)}</h3>
-                  {w.location && <span className="font-bold text-lg opacity-70">· {w.location}</span>}
-                </div>
-                <div className={`flex items-center gap-1.5 text-xs mt-1 ${dark ? 'text-gray-400' : 'text-gray-600'}`}>
-                  <span>{w.exercises.length} exercises</span>
-                  <span className="opacity-50">·</span>
-                  <span>{w.structure === 'pairs' ? `Pairs ${w.structureDuration}'` : w.structure === 'circuit' ? 'Circuit' : '--'}</span>
-                  <span className="opacity-50">·</span>
-                  <span>{w.elapsedTime ? formatTimeHHMMSS(w.elapsedTime) : '--'}</span>
-                  <span className="opacity-50">·</span>
-                  <span>{dayProtein > 0 ? `${dayProtein}g protein` : '--'}</span>
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <h3 className="font-bold text-lg leading-tight">
+                  {dayOfWeek}, {mo}/{dy}/{yr.slice(2)}
+                  {w.location && <span className="opacity-70"> · {w.location}</span>}
+                </h3>
+                <div className={`text-xs mt-1.5 ${dark ? 'text-gray-400' : 'text-gray-600'}`}>
+                  {metaParts.join('  ·  ')}
                 </div>
               </div>
-              <button onClick={onClose} className={dark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'}><Icons.X /></button>
+              <button onClick={onClose} className={`flex-shrink-0 p-1 ${dark ? 'text-gray-400 hover:text-white' : 'text-gray-500 hover:text-gray-700'}`}><Icons.X /></button>
             </div>
           </div>
 
@@ -158,8 +160,8 @@ function DayModal({ open, onClose, dateStr, workouts, presets, proteinEntries, d
             </div>
           )}
 
-          {/* Actions */}
-          <div className={`grid grid-cols-4 gap-2 pt-3 border-t ${dark ? 'border-gray-700' : 'border-gray-200'}`}>
+          {/* Actions — added bottom padding for safe area */}
+          <div className={`grid grid-cols-4 gap-2 pt-3 pb-4 border-t ${dark ? 'border-gray-700' : 'border-gray-200'}`}>
             {[
               { icon: <Icons.Copy />, label: 'Copy', color: 'text-blue-400', fn: handleCopy },
               { icon: <Icons.Share />, label: 'Share', color: 'text-purple-400', fn: handleShare },
@@ -228,13 +230,13 @@ function WorkoutFeed({ workouts, presets, proteinEntries, search, dark, onDayCli
   if (!weeks.length) return <div className={`text-center py-8 ${dark ? 'text-gray-500' : 'text-gray-400'}`}>{search ? 'No workouts found' : 'No workouts yet'}</div>;
 
   return (
-    <div className="space-y-2 mt-1">
+    <div className="space-y-3 mt-2">
       {weeks.map(wk => (
         <div key={wk}>
-          <div id={`week-${wk}`} className={`py-2 px-3 mb-3 mt-1 rounded-lg font-bold text-xs tracking-wider ${dark ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`}>
+          <div id={`week-${wk}`} className={`py-2 px-3 mb-3 mt-2 rounded-lg font-bold text-xs tracking-wider ${dark ? 'bg-gray-700 text-gray-300' : 'bg-gray-200 text-gray-700'}`}>
             {getWeekLabel(wk)}
           </div>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {groups[wk].sort((a, b) => b.date.localeCompare(a.date)).map((w, i) => {
               const [yr, mo, dy] = w.date.split('-');
               const dateObj = new Date(parseInt(yr), parseInt(mo) - 1, parseInt(dy));
@@ -245,13 +247,13 @@ function WorkoutFeed({ workouts, presets, proteinEntries, search, dark, onDayCli
                 <button key={`${w.date}-${i}`} onClick={() => onDayClick(w.date)}
                   className={`w-full ${dark ? 'bg-gray-800 hover:bg-gray-700' : 'bg-white hover:bg-gray-50 border border-gray-200'} rounded-xl p-4 text-left transition-colors shadow-md border-l-4 ${color.border}`}>
                   <div className="flex items-center justify-between">
-                    <div>
+                    <div className="min-w-0 flex-1 mr-2">
                       <div className="font-bold text-base">{dow} {mo}/{dy}/{yr.slice(2)}{w.location && <span className="ml-2 text-base font-bold opacity-70">· {w.location}</span>}</div>
                       <div className={`text-sm ${dark ? 'text-gray-400' : 'text-gray-600'}`}>
                         {w.exercises.length} exercise{w.exercises.length !== 1 ? 's' : ''}
-                        {w.structure && ` · ${w.structure === 'pairs' ? `Pairs ${w.structureDuration}'` : 'Circuit'}`}
+                        {w.structure && ` · ${w.structure === 'pairs' ? `Pairs ${w.structureDuration || 3}'` : 'Circuit'}`}
                         {w.elapsedTime && ` · ${formatTimeHHMMSS(w.elapsedTime)}`}
-                        {dayP > 0 && ` · ${dayP}g protein`}
+                        {dayP > 0 && ` · ${dayP}g`}
                       </div>
                     </div>
                     <Icons.ChevronRight />
@@ -303,18 +305,32 @@ export default function HomeView({ workouts, presets, proteinEntries, dark, them
 
   return (
     <div className="pb-32 relative">
-      {/* Sticky calendar */}
-      <div data-calendar className={`fixed left-0 right-0 z-10 ${theme.bg} pt-2 pb-1 px-3`} style={{ top: '52px' }}>
+      {/* Sticky calendar — uses theme bg + shadow to fully hide content scrolling behind it */}
+      <div data-calendar className={`fixed left-0 right-0 z-10 pt-2 pb-2 px-3`}
+        style={{
+          top: '52px',
+          backgroundColor: 'inherit',
+        }}>
+        {/* Solid background layer to prevent bleed-through */}
+        <div className={`absolute inset-0 ${theme.bg}`} style={{ zIndex: -1 }} />
         <div className="max-w-4xl mx-auto">
           <WeekCalendar workouts={workouts} presets={presets} weekOffset={weekOffset} setWeekOffset={setWeekOffset}
             dark={dark} onDayClick={(ds) => { setSelectedDay(ds); setShowDay(true); }} />
         </div>
+        {/* Bottom fade edge so content doesn't just hard-cut */}
+        <div className={`absolute left-0 right-0 h-3 pointer-events-none`}
+          style={{
+            bottom: '-12px',
+            background: dark
+              ? 'linear-gradient(to bottom, rgb(17,24,39), transparent)'
+              : 'linear-gradient(to bottom, rgb(249,250,251), transparent)'
+          }} />
       </div>
-      <div className="h-32"></div>
+      <div className="h-[180px]"></div>
 
       {/* Search */}
       {searchOpen && (
-        <div className="relative mt-3">
+        <div className="relative mb-3">
           <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Search workouts..."
             className={`w-full ${dark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border rounded-xl px-4 py-3 pl-10 text-sm shadow-sm`} autoFocus
             onBlur={() => { if (!search) setSearchOpen(false); }} />
