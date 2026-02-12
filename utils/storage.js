@@ -1,190 +1,258 @@
-# GORS LOG — Product Requirements Document
+// LocalStorage helpers
+export const load = (key) => {
+  if (typeof window === 'undefined') return null;
+  try {
+    const v = localStorage.getItem(key);
+    return v ? JSON.parse(v) : null;
+  } catch { return null; }
+};
 
-## 1. Product Overview
+export const save = (key, data) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem(key, JSON.stringify(data));
+};
 
-**GORS LOG** is a mobile-first workout logging and fitness tracking progressive web application (PWA) built with Next.js and React. It serves as a personal training journal that enables users to log workouts, track exercise volume over time, monitor body weight, and record daily protein intake — all from a single, fast, offline-capable interface.
+export const loadTheme = () => {
+  if (typeof window === 'undefined') return 'dark';
+  const t = localStorage.getItem('theme');
+  const dm = localStorage.getItem('darkMode');
+  if (t) {
+    if (t === 'midnight') {
+      localStorage.setItem('theme', 'neon');
+      return 'neon';
+    }
+    return t;
+  }
+  if (dm !== null) return JSON.parse(dm) ? 'dark' : 'light';
+  return 'dark';
+};
 
-The tagline — *"BE ABOUT IT"* — reflects a no-nonsense, action-oriented philosophy. The app is designed for a single user who trains consistently (primarily bodyweight/calisthenics exercises like pull-ups, dips, chin-ups, push-ups) and wants a lightweight, privacy-respecting tool that lives entirely in the browser with no server or account required.
+export const saveTheme = (t) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('theme', t);
+};
 
----
+// Date helper - today in YYYY-MM-DD without timezone issues
+export const getTodayDate = () => {
+  const n = new Date();
+  return `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+};
 
-## 2. Target User
+// Format seconds to M:SS
+export const formatTime = (s) => {
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+};
 
-- Individual fitness enthusiast, likely training with bodyweight exercises and minimal equipment (e.g., a home/garage gym setup).
-- Wants fast, frictionless workout logging — not a social fitness platform.
-- Values data ownership: all data stays on-device (localStorage + IndexedDB).
-- Uses the app primarily on an iPhone/mobile browser (PWA-optimized with safe-area insets, swipe-to-dismiss modals, touch-friendly inputs).
+// Format seconds to HH:MM:SS
+export const formatTimeHHMMSS = (s) => {
+  if (!s) return null;
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+};
 
----
+// IndexedDB backup system
+export const createBackup = (data) => {
+  return new Promise((resolve, reject) => {
+    try {
+      const req = indexedDB.open('GorsLogBackups', 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('backups')) {
+          db.createObjectStore('backups', { keyPath: 'timestamp' });
+        }
+      };
+      req.onsuccess = (e) => {
+        const db = e.target.result;
+        const tx = db.transaction(['backups'], 'readwrite');
+        const store = tx.objectStore('backups');
+        const backup = { timestamp: Date.now(), ...data };
+        store.add(backup);
+        // Prune old backups (keep last 5)
+        const all = store.getAll();
+        all.onsuccess = () => {
+          const sorted = all.result.sort((a, b) => b.timestamp - a.timestamp);
+          sorted.slice(5).forEach(b => store.delete(b.timestamp));
+        };
+        localStorage.setItem('lastBackup', backup.timestamp.toString());
+        resolve();
+      };
+      req.onerror = () => reject(req.error);
+    } catch (err) { reject(err); }
+  });
+};
 
-## 3. Core Features
+export const loadBackups = () => {
+  return new Promise((resolve, reject) => {
+    try {
+      const req = indexedDB.open('GorsLogBackups', 1);
+      req.onupgradeneeded = (e) => {
+        const db = e.target.result;
+        if (!db.objectStoreNames.contains('backups')) {
+          db.createObjectStore('backups', { keyPath: 'timestamp' });
+        }
+      };
+      req.onsuccess = (e) => {
+        const db = e.target.result;
+        const tx = db.transaction(['backups'], 'readonly');
+        const all = tx.objectStore('backups').getAll();
+        all.onsuccess = () => resolve(all.result.sort((a, b) => b.timestamp - a.timestamp));
+      };
+      req.onerror = () => reject(req.error);
+    } catch (err) { reject(err); }
+  });
+};
 
-### 3.1 Workout Logging
+// Check if backup is needed (every 7 days)
+export const shouldBackup = () => {
+  const last = localStorage.getItem('lastBackup');
+  const now = Date.now();
+  const sevenDays = 7 * 24 * 60 * 60 * 1000;
+  return !last || now - parseInt(last) > sevenDays;
+};
 
-| Capability | Details |
-|---|---|
-| **Preset-based workouts** | Users define reusable workout presets (e.g., "Garage BW", "BW-only") with a fixed list of exercises. Starting a workout from a preset pre-populates the exercise list. |
-| **Manual workouts** | A "Manual" preset allows building a workout from scratch by adding exercises one at a time. |
-| **Exercise entry** | Each exercise has N sets (default 4). Each set records reps and an optional weight. Users can add/remove sets. |
-| **Workout structure** | Workouts can be tagged as "Pairs" (with 3/4/5-minute durations) or "Circuit" to describe the training format. |
-| **Workout timer** | A live timer starts when the user begins a workout, supports pause/resume, and the elapsed time is saved with the workout. |
-| **Day Off logging** | Users can log rest days with notes explaining why they skipped training. |
-| **Workout notes** | Free-text notes field per workout and per exercise. |
-| **Edit & delete** | Saved workouts can be edited in-place or deleted with confirmation dialogs. |
-| **Two view modes** | Workout entry supports a compact **Table View** and an expanded **Card View**. |
+// CSV export
+export const exportCSV = (workouts) => {
+  const rows = [];
+  [...workouts].sort((a, b) => a.date.localeCompare(b.date)).forEach(w => {
+    const d = new Date(w.date);
+    const ds = `${d.getMonth() + 1}-${d.getDate()}-${d.getFullYear()}`;
+    w.exercises.forEach((ex, i) => {
+      const sets = ex.sets.slice(0, 4);
+      const reps = sets.map(s => s.reps || '').concat(Array(4 - sets.length).fill(''));
+      const tot = sets.reduce((s, x) => s + (x.reps || 0), 0);
+      let notes = ex.notes || '';
+      const wts = sets.filter(s => s.weight).map(s => s.weight);
+      if (wts.length) notes = wts[0] + (notes ? '. ' + notes : '');
+      rows.push(i === 0
+        ? `${ds},${ex.name},${reps[0]},${reps[1]},${reps[2]},${reps[3]},${tot},${notes}`
+        : `,${ex.name},${reps[0]},${reps[1]},${reps[2]},${reps[3]},${tot},${notes}`
+      );
+    });
+    rows.push(`,${w.location || ''},,,,,,${[w.location, w.notes].filter(Boolean).join('. ')}`);
+  });
+  const csv = `Date,Exercise,1,2,3,4,Tot,Notes\n${rows.join('\n')}`;
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `workouts-${new Date().toISOString().split('T')[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+};
 
-### 3.2 Home Screen — Weekly Calendar & Feed
+// Copy workout to sheets format
+export const copyToSheets = (w) => {
+  const d = new Date(w.date);
+  const lines = [];
+  w.exercises.forEach((ex, i) => {
+    const s = ex.sets.slice(0, 4);
+    const r = s.map(x => x.reps || '').concat(Array(4 - s.length).fill(''));
+    const t = s.reduce((sum, x) => sum + (x.reps || 0), 0);
+    let n = ex.notes || '';
+    const wts = s.filter(x => x.weight).map(x => x.weight);
+    if (wts.length) n = wts[0] + (n ? '. ' + n : '');
+    const ds = `${d.getMonth() + 1}-${d.getDate()}-${d.toLocaleDateString('en-US', { weekday: 'short' })}`;
+    lines.push(i === 0
+      ? `${ds}\t${ex.name}\t${r[0]}\t${r[1]}\t${r[2]}\t${r[3]}\t${t}\t${n}`
+      : `\t${ex.name}\t${r[0]}\t${r[1]}\t${r[2]}\t${r[3]}\t${t}\t${n}`
+    );
+  });
+  lines.push(`\t${w.location || ''}\t\t\t\t\t\t${[w.location, w.notes].filter(Boolean).join('. ')}`);
+  navigator.clipboard.writeText(lines.join('\n'));
+};
 
-| Capability | Details |
-|---|---|
-| **Weekly calendar strip** | A sticky, horizontally-scrolling week view (Mon–Sun) shows which days have logged workouts. Color-coded dots correspond to the workout preset used. |
-| **Week navigation** | Users can navigate forward/backward through weeks. The feed auto-syncs to the visible week on scroll. |
-| **Workout feed** | Below the calendar, workouts are grouped by week in reverse-chronological order. Each card shows date, preset name, exercise count, structure, duration, and protein intake. |
-| **Day detail modal** | Tapping a workout card opens a bottom-sheet modal showing the full exercise breakdown (exercise name, set-by-set reps, totals), notes, and action buttons (Copy, Share, Edit, Delete). |
-| **Search** | A collapsible search bar filters the feed by date, exercise name, location, or notes. |
+// Share workout
+export const shareWorkout = async (w) => {
+  const d = new Date(w.date);
+  const ds = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+  let txt = `GORS LOG - ${w.location || 'Workout'}\n${ds}\n`;
+  if (w.elapsedTime) txt += `Duration: ${formatTimeHHMMSS(w.elapsedTime)}\n`;
+  txt += '\n';
+  w.exercises.forEach(ex => {
+    const sets = ex.sets.map(s => s.reps || 0).join(', ');
+    const tot = ex.sets.reduce((s, x) => s + (x.reps || 0), 0);
+    txt += `${ex.name}: ${sets} (Total: ${tot})`;
+    if (ex.notes) txt += ` - ${ex.notes}`;
+    txt += '\n';
+  });
+  if (w.notes) txt += `\nNotes: ${w.notes}`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: `GORS LOG - ${w.location || 'Workout'}`, text: txt });
+      return true;
+    } catch (err) {
+      if (err.name === 'AbortError') return false;
+    }
+  }
+  navigator.clipboard.writeText(txt);
+  return 'clipboard';
+};
 
-### 3.3 Stats Dashboard
+// Import presets from CSV
+export const parsePresetsCSV = (text) => {
+  const lines = text.split('\n');
+  const ps = [], exs = new Set();
+  lines.forEach(line => {
+    const cols = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+    if (!cols[0]) return;
+    const exercises = cols.slice(1).filter(Boolean);
+    ps.push({ name: cols[0], exercises });
+    exercises.forEach(e => exs.add(e));
+  });
+  return { presets: ps, exercises: Array.from(exs).sort() };
+};
 
-The Stats tab is a hub with sub-views:
+// Import workouts from CSV
+export const parseWorkoutsCSV = (text) => {
+  const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+  const imp = [];
+  let cur = null, loc = '';
+  
+  const parseDate = (str) => {
+    const p = str.split('-');
+    if (p.length === 3) {
+      const m = p[0].padStart(2, '0'), d = p[1].padStart(2, '0');
+      const y = p[2].length === 4 ? p[2] : '2026';
+      return `${y}-${m}-${d}`;
+    }
+    return str;
+  };
 
-#### 3.3.1 Volume Trend Chart
-- Bar chart showing **total reps per week** over the last 12 weeks.
-- Supports filtering by specific exercises (e.g., show only Pull-ups + Dips) with stacked, color-coded bars.
-- Displays the current week's total.
+  if (lines.length > 0 && !lines[0].toLowerCase().includes('date')) {
+    loc = lines[0].split(',')[0].trim();
+  }
 
-#### 3.3.2 Exercise Statistics
-- Lists all exercises ever logged, sorted alphabetically, with total workout count and lifetime reps.
-- Drill-down view per exercise shows **weekly volume** and **monthly volume** as horizontal bar charts.
-- A **Monthly Volume Widget** at the top tracks Pull-ups, Dips, and Chin-ups month-over-month with progress bars comparing to the previous month.
+  for (let i = 0; i < lines.length; i++) {
+    const cols = lines[i].split(',').map(c => c.trim());
+    if (cols[0]?.toLowerCase() === 'date' || cols[1]?.toLowerCase() === 'exercise') continue;
+    if (i === 0 && !cols[0].match(/^\d/)) continue;
 
-#### 3.3.3 Body Weight Tracking
-- Add/edit/delete weight entries with date (calendar picker), weight (lbs), and optional notes.
-- **Summary card**: current weight, starting weight, total change, rate of change (lbs/week), entry count.
-- **Line chart** with gradient fill showing weight trend over time, with Y-axis labels, gridlines, and data points.
-- **History list**: chronological entries with day-over-day change indicators (color-coded green/red).
-
-#### 3.3.4 Protein Intake Tracking
-- Log protein entries (grams + food description) with timestamps.
-- **30-day view**: shows each day's total protein, number of meals, and expandable per-entry details.
-- Today is always expanded by default; past days are collapsible.
-- Edit and delete individual protein entries.
-
-### 3.4 Quick Add Menu
-
-A unified "+" button on the Home screen opens a **3-tab modal**:
-
-1. **Workout** — Select a preset to start a new workout.
-2. **Protein** — Quick-add protein entry (grams + food).
-3. **Weight** — Quick-log a body weight entry.
-
-### 3.5 Settings & Data Management
-
-#### Workout Presets Management
-- Create, edit, reorder (up/down), and delete workout presets.
-- Each preset has: name, color (8-color palette), exercise list, and a "show in menu" toggle.
-- Exercises are selected from a global exercise library.
-
-#### Exercise Library
-- Add/delete exercises from a master list.
-- Exercises are available across all presets and workout forms.
-
-#### Import/Export
-- **Import presets** from CSV (name, exercise1, exercise2, ...).
-- **Import workouts** from CSV (supports a specific columnar format with dates, exercises, sets, notes, and location).
-- **Export all workouts** as CSV.
-
-#### Backup System
-- **Automatic backups** every 7 days via IndexedDB.
-- Keeps the last 5 backups with timestamps.
-- Users can view and restore any backup from the Settings screen.
-
-#### Data Deletion
-- "Delete All Workouts" with a two-step confirmation dialog. Presets are preserved.
-
-### 3.6 Sharing & Clipboard
-
-- **Copy to Sheets**: Formats a workout into a tab-separated format matching a specific Google Sheets structure (date, exercise, set1–set4, total, notes).
-- **Share**: Uses the Web Share API (native iOS share sheet) to share a formatted text summary. Falls back to clipboard on unsupported browsers.
-
----
-
-## 4. Theming
-
-Four built-in themes, cycled by tapping the header logo:
-
-| Theme | Background | Accent | Character |
-|---|---|---|---|
-| **Light** | Gray-50 | Blue | Clean, minimal |
-| **Dark** | Gray-900 | Blue | Default, high-contrast |
-| **Neon** | Black | Green | Cyberpunk/hacker aesthetic |
-| **Forest** | Green-950 | Green | Earthy, nature-inspired |
-
-Theme preference is persisted in localStorage. Legacy `darkMode` and `midnight` theme values are auto-migrated.
-
----
-
-## 5. Technical Architecture
-
-| Layer | Technology |
-|---|---|
-| **Framework** | Next.js (Pages Router) |
-| **UI** | React with Hooks (functional components, ~100+ `useState` calls) |
-| **Styling** | Tailwind CSS (utility-first, inline classes) |
-| **Icons** | Custom inline SVG components |
-| **Persistence** | `localStorage` for all primary data (workouts, presets, exercises, weight, protein, theme) |
-| **Backup storage** | IndexedDB (`GorsLogBackups` database) |
-| **PWA support** | `apple-mobile-web-app-capable`, viewport meta, safe-area handling |
-| **Sharing** | Web Share API with clipboard fallback |
-
-### Data Models (localStorage)
-
-```
-workouts[]        → { date, exercises[], notes, location, structure, structureDuration, elapsedTime }
-  exercises[]     → { name, sets[], notes }
-    sets[]        → { reps: number, weight: number|null }
-
-presets[]         → { name, exercises: string[], color, includeInMenu }
-exercises[]       → string[] (global exercise name list)
-weightEntries[]   → { date, weight, notes }
-proteinEntries[]  → { date, grams, food, timestamp }
-theme             → 'light' | 'dark' | 'neon' | 'forest'
-lastBackup        → timestamp string
-```
-
----
-
-## 6. UX Patterns
-
-- **Bottom-sheet modals** with swipe-to-dismiss (touch gesture handling via `onTouchStart/Move/End`).
-- **Confirmation dialogs** for all destructive actions (delete workout, delete preset, discard unsaved workout, end workout).
-- **Toast notifications** for transient feedback (copy, save, export actions).
-- **Sticky headers** — the weekly calendar and navigation bar remain fixed during scroll.
-- **Scroll-linked week sync** — scrolling through the workout feed updates the weekly calendar strip.
-- **Keyboard-aware** — numeric inputs use `inputMode="numeric"`, extra bottom padding on modals for on-screen keyboards.
-- **Background scroll lock** when modals are open.
-- **2-second branded loading screen** on app launch.
-
----
-
-## 7. Non-Functional Requirements
-
-| Requirement | Implementation |
-|---|---|
-| **Offline-first** | All data in localStorage/IndexedDB; no network requests required. |
-| **Privacy** | Zero telemetry, no accounts, no server-side storage. |
-| **Performance** | Single-page app, no external API calls, lightweight SVG icons. |
-| **Mobile-optimized** | Touch targets ≥44px, safe-area insets, no-zoom viewport, swipe gestures. |
-| **Data portability** | CSV import/export for workouts and presets. |
-| **Data safety** | Auto-backup every 7 days, 5-backup retention, manual restore. |
-
----
-
-## 8. Known Limitations & Future Considerations
-
-- **Single-device**: No sync across devices (no backend/cloud).
-- **localStorage limits**: ~5–10MB depending on browser; heavy users may eventually hit limits.
-- **No authentication**: Anyone with device access can view/modify data.
-- **Hardcoded exercise focus**: The Monthly Volume Widget is hardcoded to Pull-ups, Dips, and Chin-ups — not user-configurable.
-- **No progressive overload tracking**: Weight per set is captured but not surfaced in stats (no weight progression charts).
-- **No rest timer**: The workout timer tracks total duration but doesn't provide per-set rest period alerts.
-- **CSV format is fragile**: Import relies on specific column positions and formatting conventions.
+    if (cols[0]?.match(/^\d+-\d+/)) {
+      if (cur && (cur.exercises.length > 0 || cur.location === 'Day Off')) imp.push(cur);
+      cur = { date: parseDate(cols[0]), exercises: [], notes: '', location: loc };
+      if (cols[1] === 'Day Off') {
+        cur.location = 'Day Off';
+        const n = [cols[7], cols[8], cols[9], cols[10]].filter(x => x?.trim());
+        if (n.length) cur.notes = n.join(' ');
+      } else if (cols[1]) {
+        const sets = [cols[2], cols[3], cols[4], cols[5]].filter(s => s?.trim()).map(s => ({ reps: parseInt(s) || 0, weight: null }));
+        cur.exercises.push({ name: cols[1], sets, notes: cols[7] || '' });
+      }
+    } else if (cur && cols[1]?.trim() && cols[1] !== 'Day Off') {
+      const sets = [cols[2], cols[3], cols[4], cols[5]].filter(s => s?.trim()).map(s => ({ reps: parseInt(s) || 0, weight: null }));
+      cur.exercises.push({ name: cols[1], sets, notes: cols[7] || '' });
+    } else if (cur && cur.location !== 'Day Off' && cols[2]?.match(/Garage|BW|Manual/)) {
+      cur.location = cols[2];
+      const n = [cols[7], cols[8], cols[9], cols[10]].filter(x => x?.trim());
+      if (n.length) cur.notes = n.join(' ');
+    } else if (cur && cols[2] === 'Day Off') {
+      cur.location = 'Day Off';
+      const n = [cols[7], cols[8], cols[9], cols[10]].filter(x => x?.trim());
+      if (n.length) cur.notes = n.join(' ');
+    }
+  }
+  if (cur && (cur.exercises.length > 0 || cur.location === 'Day Off')) imp.push(cur);
+  return imp;
+};
