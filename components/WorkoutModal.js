@@ -167,6 +167,12 @@ export default function WorkoutModal({ open, onClose, current, setCurrent, exerc
   const updateEx = (i, f, v) => { const u = [...current.exercises]; u[i][f] = v; setCurrent({ ...current, exercises: u }); };
   const updateSet = (ei, si, v) => { const u = [...current.exercises]; if (!u[ei].sets[si]) u[ei].sets[si] = { reps: 0, weight: null }; u[ei].sets[si].reps = parseInt(v) || 0; setCurrent({ ...current, exercises: u }); };
   const addSet = (ei) => { const u = [...current.exercises]; u[ei].sets.push({ reps: 0, weight: null }); setCurrent({ ...current, exercises: u }); };
+  const removeSet = (ei, si) => {
+    const u = [...current.exercises];
+    if (u[ei].sets.length <= 1) return; // keep at least 1 set
+    u[ei].sets.splice(si, 1);
+    setCurrent({ ...current, exercises: u });
+  };
 
   const handleClose = () => {
     if (current.exercises.length > 0) setShowClose(true);
@@ -272,66 +278,117 @@ export default function WorkoutModal({ open, onClose, current, setCurrent, exerc
               </div>
             </div>
 
-            {/* Exercises */}
+            {/* Exercises — TABLE VIEW */}
             {viewMode === 'table' ? (
-              <div className="overflow-x-auto -mx-3 px-3">
-                {current.exercises.map((ex, ei) => {
-                  const tot = ex.sets.reduce((s, x) => s + (x.reps || 0), 0);
-                  const maxSets = Math.max(4, ex.sets.length);
-                  return (
-                    <div key={ei} className="flex gap-0.5 mb-1 overflow-x-auto pb-1">
-                      <div className={`sticky left-0 ${dark ? 'bg-gray-900' : 'bg-gray-50'} z-10 pr-0.5`}>
-                        <select value={ex.name} onChange={e => updateEx(ei, 'name', e.target.value)}
-                          className={`w-[100px] ${dark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'} border rounded px-1 py-1 text-[11px]`}>
-                          <option value="">Select</option>
-                          {exercises.map((e, i) => <option key={i} value={e}>{e}</option>)}
-                        </select>
-                      </div>
-                      {Array.from({ length: maxSets }, (_, si) => (
-                        <input key={si} type="number" inputMode="numeric" value={ex.sets[si]?.reps || ''} onChange={e => updateSet(ei, si, e.target.value)}
-                          disabled={!started} placeholder="0"
-                          className={`w-[40px] ${dark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'} border rounded px-1 py-1 text-[11px] text-center disabled:opacity-50`} />
-                      ))}
-                      <div className={`w-[35px] ${dark ? 'bg-gray-900 border-gray-700' : 'bg-gray-100 border-gray-300'} border rounded px-1 py-1 text-[11px] text-center font-bold`}>{tot}</div>
-                      <input type="text" value={ex.notes} onChange={e => updateEx(ei, 'notes', e.target.value)} placeholder="..."
-                        className={`w-[80px] ${dark ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-300'} border rounded px-1 py-1 text-[11px]`} />
-                      <button onClick={() => setDelEx(ei)} className="w-[24px] text-red-400 text-lg">×</button>
-                      <button onClick={() => addSet(ei)} className={`w-[36px] text-blue-400 text-xs ${dark ? 'bg-gray-700' : 'bg-gray-200'} rounded`}>+</button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
               <div className="space-y-2">
                 {current.exercises.map((ex, ei) => {
                   const tot = ex.sets.reduce((s, x) => s + (x.reps || 0), 0);
                   return (
                     <div key={ei} className={`${dark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-lg p-2`}>
-                      <select value={ex.name} onChange={e => updateEx(ei, 'name', e.target.value)}
-                        className={`w-full ${dark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'} border rounded px-2 py-1 text-xs font-medium mb-2`}>
-                        <option value="">Select Exercise</option>
-                        {exercises.map((e, i) => <option key={i} value={e}>{e}</option>)}
-                      </select>
+                      {/* Exercise name + delete */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <select value={ex.name} onChange={e => updateEx(ei, 'name', e.target.value)}
+                          className={`flex-1 ${dark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'} border rounded px-2 py-1.5 text-xs font-medium`}>
+                          <option value="">Select Exercise</option>
+                          {exercises.map((e, i) => <option key={i} value={e}>{e}</option>)}
+                        </select>
+                        <button onClick={() => setDelEx(ei)}
+                          className={`p-2 rounded-lg ${dark ? 'bg-red-900/30 text-red-400 hover:bg-red-900/50' : 'bg-red-50 text-red-500 hover:bg-red-100'} active:scale-95`}>
+                          <Icons.Trash />
+                        </button>
+                      </div>
+                      {/* Sets row */}
+                      <div className="flex items-center gap-1 overflow-x-auto pb-1">
+                        {ex.sets.map((s, si) => (
+                          <div key={si} className="flex flex-col items-center relative group">
+                            <div className={`text-[10px] ${dark ? 'text-gray-500' : 'text-gray-400'} mb-0.5`}>S{si + 1}</div>
+                            <input type="number" inputMode="numeric" value={s.reps || ''} onChange={e => updateSet(ei, si, e.target.value)}
+                              disabled={!started} placeholder="0"
+                              className={`w-[44px] h-[36px] ${dark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'} border rounded px-1 py-1 text-xs text-center disabled:opacity-50`} />
+                            {/* Delete set button — shows if more than 1 set */}
+                            {ex.sets.length > 1 && (
+                              <button onClick={() => removeSet(ei, si)}
+                                className={`mt-0.5 w-[44px] h-[20px] flex items-center justify-center rounded text-[10px] font-medium
+                                  ${dark ? 'text-red-400/60 hover:text-red-400 hover:bg-red-900/30' : 'text-red-400/60 hover:text-red-500 hover:bg-red-50'}`}>
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                        {/* Total */}
+                        <div className="flex flex-col items-center">
+                          <div className={`text-[10px] ${dark ? 'text-gray-500' : 'text-gray-400'} mb-0.5`}>Tot</div>
+                          <div className={`w-[44px] h-[36px] flex items-center justify-center ${dark ? 'bg-gray-900 border-gray-700' : 'bg-gray-100 border-gray-300'} border rounded text-xs font-bold`}>{tot}</div>
+                        </div>
+                        {/* Add set button — bigger tap target */}
+                        <div className="flex flex-col items-center">
+                          <div className={`text-[10px] invisible mb-0.5`}>+</div>
+                          <button onClick={() => addSet(ei)}
+                            className={`w-[44px] h-[36px] flex items-center justify-center rounded text-sm font-bold
+                              ${dark ? 'bg-blue-900/30 text-blue-400 hover:bg-blue-900/50 border border-blue-500/30' : 'bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200'} active:scale-95`}>
+                            +
+                          </button>
+                        </div>
+                      </div>
+                      {/* Notes */}
+                      <input type="text" value={ex.notes} onChange={e => updateEx(ei, 'notes', e.target.value)} placeholder="Notes..."
+                        className={`w-full mt-1.5 ${dark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'} border rounded px-2 py-1.5 text-xs`} />
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              /* CARD VIEW */
+              <div className="space-y-2">
+                {current.exercises.map((ex, ei) => {
+                  const tot = ex.sets.reduce((s, x) => s + (x.reps || 0), 0);
+                  return (
+                    <div key={ei} className={`${dark ? 'bg-gray-800' : 'bg-white border border-gray-200'} rounded-lg p-3`}>
+                      {/* Exercise name + delete */}
+                      <div className="flex items-center gap-2 mb-2">
+                        <select value={ex.name} onChange={e => updateEx(ei, 'name', e.target.value)}
+                          className={`flex-1 ${dark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'} border rounded px-2 py-1.5 text-xs font-medium`}>
+                          <option value="">Select Exercise</option>
+                          {exercises.map((e, i) => <option key={i} value={e}>{e}</option>)}
+                        </select>
+                        <button onClick={() => setDelEx(ei)}
+                          className={`p-2 rounded-lg ${dark ? 'bg-red-900/30 text-red-400 hover:bg-red-900/50' : 'bg-red-50 text-red-500 hover:bg-red-100'} active:scale-95`}>
+                          <Icons.Trash />
+                        </button>
+                      </div>
+                      {/* Sets */}
                       <div className="flex items-center gap-1 mb-2 overflow-x-auto">
                         {ex.sets.map((s, si) => (
                           <div key={si} className="flex flex-col items-center">
                             <div className={`text-[10px] ${dark ? 'text-gray-400' : 'text-gray-600'} mb-0.5`}>S{si + 1}</div>
                             <input type="number" inputMode="numeric" value={s.reps || ''} onChange={e => updateSet(ei, si, e.target.value)}
                               disabled={!started} placeholder="0"
-                              className={`w-12 ${dark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'} border rounded px-1 py-1 text-[11px] text-center disabled:opacity-50`} />
+                              className={`w-12 h-[36px] ${dark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'} border rounded px-1 py-1 text-xs text-center disabled:opacity-50`} />
+                            {ex.sets.length > 1 && (
+                              <button onClick={() => removeSet(ei, si)}
+                                className={`mt-0.5 w-12 h-[20px] flex items-center justify-center rounded text-[10px] font-medium
+                                  ${dark ? 'text-red-400/60 hover:text-red-400 hover:bg-red-900/30' : 'text-red-400/60 hover:text-red-500 hover:bg-red-50'}`}>
+                                ✕
+                              </button>
+                            )}
                           </div>
                         ))}
                         <div className="flex flex-col items-center">
                           <div className={`text-[10px] ${dark ? 'text-gray-400' : 'text-gray-600'} mb-0.5`}>Tot</div>
-                          <div className={`w-12 ${dark ? 'bg-gray-900 border-gray-700' : 'bg-gray-100 border-gray-300'} border rounded px-1 py-1 text-[11px] text-center font-bold`}>{tot}</div>
+                          <div className={`w-12 h-[36px] flex items-center justify-center ${dark ? 'bg-gray-900 border-gray-700' : 'bg-gray-100 border-gray-300'} border rounded text-xs font-bold`}>{tot}</div>
                         </div>
-                        <button onClick={() => addSet(ei)} className={`text-blue-400 text-xs px-2 py-1 ${dark ? 'bg-gray-700' : 'bg-gray-200'} rounded mt-3.5`}>+</button>
+                        <div className="flex flex-col items-center">
+                          <div className="text-[10px] invisible mb-0.5">+</div>
+                          <button onClick={() => addSet(ei)}
+                            className={`w-12 h-[36px] flex items-center justify-center rounded text-sm font-bold
+                              ${dark ? 'bg-blue-900/30 text-blue-400 hover:bg-blue-900/50 border border-blue-500/30' : 'bg-blue-50 text-blue-500 hover:bg-blue-100 border border-blue-200'} active:scale-95`}>
+                            +
+                          </button>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <input type="text" value={ex.notes} onChange={e => updateEx(ei, 'notes', e.target.value)} placeholder="Notes..."
-                          className={`flex-1 ${dark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'} border rounded px-2 py-1 text-[11px]`} />
-                        <button onClick={() => setDelEx(ei)} className="text-red-400 px-2 py-1"><Icons.Trash /></button>
-                      </div>
+                      {/* Notes */}
+                      <input type="text" value={ex.notes} onChange={e => updateEx(ei, 'notes', e.target.value)} placeholder="Notes..."
+                        className={`w-full ${dark ? 'bg-gray-700 border-gray-600' : 'bg-white border-gray-300'} border rounded px-2 py-1.5 text-xs`} />
                     </div>
                   );
                 })}
@@ -352,7 +409,7 @@ export default function WorkoutModal({ open, onClose, current, setCurrent, exerc
         </div>
 
         {/* Footer */}
-        <div className={`sticky bottom-0 ${dark ? 'bg-gradient-to-t from-gray-900 via-gray-900 border-gray-700/50' : 'bg-gradient-to-t from-gray-50 via-gray-50 border-gray-200'} border-t p-4`}>
+        <div className={`sticky bottom-0 ${dark ? 'bg-gradient-to-t from-gray-900 via-gray-900 border-gray-700/50' : 'bg-gradient-to-t from-gray-50 via-gray-50 border-gray-200'} border-t p-4 pb-6`}>
           {editing !== null ? (
             <div className="grid grid-cols-2 gap-3">
               <button onClick={handleSaveWorkout} className="bg-gradient-to-r from-blue-600 to-blue-500 py-4 rounded-xl font-bold text-lg shadow-lg">Update</button>
